@@ -109,29 +109,14 @@ module.exports = function (Topics) {
 		if (!Array.isArray(postData) || !postData.length) {
 			return [];
 		}
-		const pids = postData.map(post => post && post.pid);
 
-		async function getPostUserData(field, method) {
-			const uids = _.uniq(postData
-				.filter(p => p && (activitypub.helpers.isUri(p[field]) || parseInt(p[field], 10) >= 0))
-				.map(p => p[field]));
-			const userData = await method(uids);
-			return _.zipObject(uids, userData);
-		}
 		const [
 			bookmarks,
 			voteData,
 			userData,
 			editors,
 			replies,
-		] = await Promise.all([
-			posts.hasBookmarked(pids, uid),
-			posts.getVoteStatusByPostIDs(pids, uid),
-			getPostUserData('uid', async uids => await posts.getUserInfoForPosts(uids, uid)),
-			getPostUserData('editor', async uids => await user.getUsersFields(uids, ['uid', 'username', 'userslug'])),
-			getPostReplies(postData, uid),
-			Topics.addParentPosts(postData, uid),
-		]);
+		] = await getPostEnhancements;
 
 		postData.forEach((postObj, i) => {
 			if (postObj) {
@@ -158,6 +143,28 @@ module.exports = function (Topics) {
 		});
 		return result.posts;
 	};
+
+	async function getPostEnhancements(postData, uid) {
+		const pids = postData.map(post => post && post.pid);
+		return Promise.all([
+			posts.hasBookmarked(pids, uid),
+			posts.getVoteStatusByPostIDs(pids, uid),
+			getPostUserData('uid', async uids => await posts.getUserInfoForPosts(uids, uid)),
+			getPostUserData('editor', async uids => await user.getUsersFields(uids, ['uid', 'username', 'userslug'])),
+			getPostReplies(postData, uid),
+			Topics.addParentPosts(postData, uid),
+		]);
+	}
+
+	async function getPostUserData(postData, field, method) {
+		const uids = _.uniq(
+			postData
+				.filter(p => p && (activitypub.helpers.isUri(p[field]) || parseInt(p[field], 10) >= 0))
+				.map(p => p[field])
+		);
+		const userData = await method(uids);
+		return _.zipObject(uids, userData);
+	}
 
 	Topics.modifyPostsByPrivilege = function (topicData, topicPrivileges) {
 		const loggedIn = parseInt(topicPrivileges.uid, 10) > 0;
