@@ -118,30 +118,59 @@ module.exports = function (Topics) {
 			replies,
 		] = await getPostEnhancements;
 
+		const context = {bookmarks, voteData, userData, editors, replies, uid};
 		postData.forEach((postObj, i) => {
-			changePost(postObj, i, bookmarks, voteData, userData, editors, replies, uid);
+			changePost(postObj, i, context);
 		});
 
 		const result = await plugins.hooks.fire('filter:topics.addPostData', {
 			posts: postData,
 			uid: uid,
 		});
-		
+
 		return result.posts;
 	};
 
-	function changePost(postObj, i, bookmarks, voteData, userData, editors, replies, uid) {
+	function changePost(postObj, i, context) {
 		if (!postObj) return;
 
+		userFunc(postObj, context.userData);
+		editorFunc(postObj, context.editors);
+		bookmarkFunc(postObj, context.bookmarks, i);
+		votesFunc(postObj, context.voteData, i);
+		repliesFunc(postObj, context.replies, i);
+		selfPostFunc(postObj, context.uid);
+
+		guestHandleFunc(postObj);
+	}
+
+	function userFunc(postObj, userData) {
 		postObj.user = postObj.uid ? userData[postObj.uid] : { ...userData[postObj.uid] };
+	}
+
+	function editorFunc(postObj, editors) {
 		postObj.editor = postObj.editor ? editors[postObj.editor] : null;
+	}
+
+	function bookmarkFunc(postObj, bookmarks, i) {
 		postObj.bookmarked = bookmarks[i];
+	}
+
+	function votesFunc(postObj, voteData, i) {
 		postObj.upvoted = voteData.upvotes[i];
 		postObj.downvoted = voteData.downvotes[i];
 		postObj.votes = postObj.votes || 0;
-		postObj.replies = replies[i];
-		postObj.selfPost = parseInt(uid, 10) > 0 && parseInt(uid, 10) === postObj.uid;
+	}
 
+	function repliesFunc(postObj, replies, i) {
+		postObj.replies = replies[i];
+	}
+
+	function selfPostFunc(postObj, uid) {
+		postObj.selfPost = parseInt(uid, 10) > 0 && parseInt(uid, 10) === postObj.uid;
+	}
+
+	function guestHandleFunc(postObj) {
 		if (meta.config.allowGuestHandles && postObj.uid === 0 && postObj.handle) {
 			postObj.user.username = validator.escape(String(postObj.handle));
 			postObj.user.displayname = postObj.user.username;
