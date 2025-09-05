@@ -13,6 +13,7 @@ const activitypub = require('../activitypub');
 const plugins = require('../plugins');
 const utils = require('../utils');
 const privileges = require('../privileges');
+const { group } = require('yargs');
 
 const backlinkRegex = new RegExp(`(?:${nconf.get('url').replace('/', '\\/')}|\b|\\s)\\/topic\\/(\\d+)(?:\\/\\w+)?`, 'g');
 
@@ -110,15 +111,8 @@ module.exports = function (Topics) {
 			return [];
 		}
 
-		const [
-			bookmarks,
-			voteData,
-			userData,
-			editors,
-			replies,
-		] = await getPostEnhancements;
+		const context = await getPostEnhancements(postData, uid);
 
-		const context = {bookmarks, voteData, userData, editors, replies, uid};
 		postData.forEach((postObj, i) => {
 			changePost(postObj, i, context);
 		});
@@ -145,7 +139,37 @@ module.exports = function (Topics) {
 	}
 
 	function userFunc(postObj, userData) {
-		postObj.user = postObj.uid ? userData[postObj.uid] : { ...userData[postObj.uid] };
+		if (postObj.uid && userData[postObj.uid]) {
+			postObj.user = userData[postObj.uid];
+		} else {
+			postObj.user = { 
+				uid: postObj.uid || 0, 
+				username: postObj.handle || 'Guest', 
+				userslug: postObj.handle ? String(postObj.handle).toLowerCase() : 'guest', 
+				isLocal: true,
+				displayname: postObj.handle || 'Guest',
+				reputation: 0,
+				postcount: 0,
+				topiccount: 0,
+				picture: '',
+				signature: '',
+				status: '',
+				banned: 0,
+				'banned:expire': 0,
+				lastonline: 0,
+				groupTitle: '',
+				groupTitleArray: [],
+				muted: false,
+				mutedUntil: 0,
+				'icon:text': '',
+				'icon:bgColor': '',
+				lastonlineISO: '',
+				banned_until: 0,
+				banned_until_readable: '',
+				selectedGroups: [],
+				custom_profile_info: [],
+			};
+		}
 	}
 
 	function editorFunc(postObj, editors) {
@@ -179,22 +203,33 @@ module.exports = function (Topics) {
 
 	async function getPostEnhancements(postData, uid) {
 		const pids = postData.map(post => post && post.pid);
-		return Promise.all([
-			posts.hasBookmarked(pids, uid),
-			posts.getVoteStatusByPostIDs(pids, uid),
-			getPostUserData('uid', async uids => await posts.getUserInfoForPosts(uids, uid)),
-			getPostUserData('editor', async uids => await user.getUsersFields(uids, ['uid', 'username', 'userslug'])),
-			getPostReplies(postData, uid),
-			Topics.addParentPosts(postData, uid),
-		]);
+			
+		const bookmarks = await posts.hasBookmarked(pids, uid);
+		const voteData = await posts.getVoteStatusByPostIDs(pids, uid);
+		const userData = await getPostUserData('uid', async uids => await posts.getUserInfoForPosts(uids, uid));
+		const editors = await getPostUserData('editor', async uids => await user.getUsersFields(uids, ['uid', 'username', 'userslug']));
+		const replies = await getPostReplies(postData, uid);
+		Topics.addParentPosts(postData, uid);
+
+		return { bookmarks, voteData, userData, editors, replies, uid};
 	}
 
 	async function getPostUserData(postData, field, method) {
+		if (!Array.isArray(postData)) {
+			postData = postData ? [postData] : [];
+		}
+
+		if(!postData.length) {
+			return {};
+		}
 		const uids = _.uniq(
 			postData
 				.filter(p => p && (activitypub.helpers.isUri(p[field]) || parseInt(p[field], 10) >= 0))
 				.map(p => p[field])
 		);
+
+		if (!uids.length) return {};
+
 		const userData = await method(uids);
 		return _.zipObject(uids, userData);
 	}
