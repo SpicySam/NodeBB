@@ -119,30 +119,34 @@ module.exports = function (Topics) {
 		] = await getPostEnhancements;
 
 		postData.forEach((postObj, i) => {
-			if (postObj) {
-				postObj.user = postObj.uid ? userData[postObj.uid] : { ...userData[postObj.uid] };
-				postObj.editor = postObj.editor ? editors[postObj.editor] : null;
-				postObj.bookmarked = bookmarks[i];
-				postObj.upvoted = voteData.upvotes[i];
-				postObj.downvoted = voteData.downvotes[i];
-				postObj.votes = postObj.votes || 0;
-				postObj.replies = replies[i];
-				postObj.selfPost = parseInt(uid, 10) > 0 && parseInt(uid, 10) === postObj.uid;
-
-				// Username override for guests, if enabled
-				if (meta.config.allowGuestHandles && postObj.uid === 0 && postObj.handle) {
-					postObj.user.username = validator.escape(String(postObj.handle));
-					postObj.user.displayname = postObj.user.username;
-				}
-			}
+			changePost(postObj, i, bookmarks, voteData, userData, editors, replies, uid);
 		});
 
 		const result = await plugins.hooks.fire('filter:topics.addPostData', {
 			posts: postData,
 			uid: uid,
 		});
+		
 		return result.posts;
 	};
+
+	function changePost(postObj, i, bookmarks, voteData, userData, editors, replies, uid) {
+		if (!postObj) return;
+
+		postObj.user = postObj.uid ? userData[postObj.uid] : { ...userData[postObj.uid] };
+		postObj.editor = postObj.editor ? editors[postObj.editor] : null;
+		postObj.bookmarked = bookmarks[i];
+		postObj.upvoted = voteData.upvotes[i];
+		postObj.downvoted = voteData.downvotes[i];
+		postObj.votes = postObj.votes || 0;
+		postObj.replies = replies[i];
+		postObj.selfPost = parseInt(uid, 10) > 0 && parseInt(uid, 10) === postObj.uid;
+
+		if (meta.config.allowGuestHandles && postObj.uid === 0 && postObj.handle) {
+			postObj.user.username = validator.escape(String(postObj.handle));
+			postObj.user.displayname = postObj.user.username;
+		}
+	}
 
 	async function getPostEnhancements(postData, uid) {
 		const pids = postData.map(post => post && post.pid);
